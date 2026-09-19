@@ -1,6 +1,8 @@
 from aiogram import Router, F, Bot
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery
+import asyncio
+import logging
 
 import database as db
 import keyboards as kb
@@ -125,13 +127,24 @@ async def cb_buy(call: CallbackQuery, bot: Bot):
         return
 
     me = await bot.get_me()
-    payment_id, pay_url = create_payment(
-        amount=tariff["price"],
-        description=f"Подписка «{tariff['title']}» для пользователя {call.from_user.id}",
-        user_id=call.from_user.id,
-        tariff=tariff_key,
-        bot_username=me.username,
-    )
+
+    loop = asyncio.get_event_loop()
+    try:
+        payment_id, pay_url = await loop.run_in_executor(
+            None,
+            lambda: create_payment(
+                amount=tariff["price"],
+                description=f"Подписка «{tariff['title']}» для пользователя {call.from_user.id}",
+                user_id=call.from_user.id,
+                tariff=tariff_key,
+                bot_username=me.username,
+            ),
+        )
+    except Exception as e:
+        logging.error(f"Ошибка создания платежа: {e}")
+        await call.answer("Не удалось создать платёж, попробуйте позже.", show_alert=True)
+        return
+
     await db.create_payment_record(call.from_user.id, payment_id, tariff["price"], tariff_key)
 
     await edit_screen(
